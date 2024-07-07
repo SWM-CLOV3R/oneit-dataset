@@ -10,6 +10,10 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 
+import time
+
+from crawling_func.preprocess import remove_non_numeric
+
 
 def get_kko_product_info(url):
     # Selenium WebDriver 설정
@@ -92,3 +96,64 @@ def get_kko_product_info(url):
     driver.quit()
 
     return product_info_table
+
+
+def get_kko_product_reviews(url):
+    # Selenium WebDriver 설정
+    driver = webdriver.Chrome() 
+    driver.get(url + '?tab=review&sortProperty=LATEST') 
+
+    # 필요한 값이 로드될 때 까지 기다림
+    try : 
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, 'div.wrap_group.wrap_reviewcard'))
+        )
+    except TimeoutException as e:
+        driver.quit()
+        return None
+
+
+    html = driver.page_source
+    soup = BeautifulSoup(html, 'html.parser')
+
+    # 값 가져오기
+    try:
+        no_review = soup.select_one('div.wrap_group.wrap_noreview')
+        if no_review:
+            return 0, None
+    except:
+        pass
+    
+    
+    review_count = remove_non_numeric(soup.select_one('div.wrap_group.wrap_reviewcard').select_one('h4.tit_group').get_text())
+    review_wrapper = soup.select_one('div.wrap_group.wrap_reviewcard').select_one('ul.list_review')
+    # except: 
+    #     return -1, None # 판매 중지 혹은 품절 
+
+    # 더보기 미리 클릭
+    if (review_count - 1) // 20 > 0:
+        if (review_count - 1) // 20 > 5 : max_click = 5
+        else: max_click = (review_count - 1) // 20
+        
+        for press_count in range(max_click):
+            try:
+                driver.find_element(By.XPATH, '//*[@id="tabPanel_review"]/div/div[2]/button').click()
+                time.sleep(2)
+            except:
+                break
+    # 리뷰 수집
+    review_lst = []
+    for review in review_wrapper.select('app-view-review-item'):
+        star_rate = review.select_one('em.ico_detail').get_text()
+        created_at = review.select('span.txt_reviewinfo')[-1].get_text()
+        review_text = review.select_one('p.txt_review').get_text()
+        # print(star_rate,created_at,review_text)
+        review_lst.append(dict(star_rate=star_rate,created_at=created_at,review_text=review_text))
+        time.sleep(2)
+
+    # 불러온 값이 None 일 때의 대비 아직 미완
+
+    # 브라우저 닫기
+    driver.quit()
+
+    return review_count, review_lst

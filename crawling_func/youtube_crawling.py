@@ -4,14 +4,14 @@ from time import gmtime, strftime
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-from crawling_func.env import YOUTUBE_API
+from crawling_func.env import YOUTUBE_API_KEY
 
 from crawling_func.preprocess import extract_urls, check_url, get_final_url
 
 # 영상에서 정보 뽑아오는 함수
 # 스크립트 정보 제외
 def get_video(searchQ, maxCount, order="relevance"):
-    youtube = build("youtube", "v3", developerKey = YOUTUBE_API)
+    youtube = build("youtube", "v3", developerKey = YOUTUBE_API_KEY)
 
     # 검색 키워드로 search한 결과 최신순으로 받아오기
     search_response = youtube.search().list(
@@ -114,13 +114,12 @@ def get_product_urls(video_dataset):
 
         urls = extract_urls(product_info)
         for url in urls:            
-            # 유효하지 않은 url 확인
-            cut_idx = url.find('?')
-            if cut_idx != -1:
-                url = url[:cut_idx]
+            # 유효하지 않은 url 확인                
             if not check_url(url): continue
             # short url인 경우를 대비하여 최종 url 받아오기
             url = get_final_url(url)
+            cut_idx = url.find('?')
+            url = url[:cut_idx]
             # 제품에 대한 단어가 있는 경우
             if any(word in url for word in product_key): 
                 product_url.append(url)

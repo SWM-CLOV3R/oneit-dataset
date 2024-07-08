@@ -37,7 +37,7 @@ def get_kko_product_info(url):
     # 값 가져오기
     # 0. 상태 확인
     status = soup.select_one('product-stamp')
-    if status:
+    if status.get_text():
         driver.quit()
         print(url, '판매 중단')
         return None
@@ -75,8 +75,8 @@ def get_kko_product_info(url):
         driver.find_element(By.XPATH, '//*[@id="mArticle"]/app-pw-result/div/div/app-search-result/app-option/div[2]/div/div/div/ul/li[2]/button').click()
 
     html_c = driver.page_source
-    soup = BeautifulSoup(html_c, 'html.parser')
-    category = soup.select_one('swiper-slide.list_slctcate.has_item_all.swiper-slide-active').select('li')[1].get_text().strip()
+    soup_c = BeautifulSoup(html_c, 'html.parser')
+    category = soup_c.select_one('swiper-slide.list_slctcate.has_item_all.swiper-slide-active').select('li')[1].get_text().strip()
 
 
     product_info_table = dict(product_name=product_name, 

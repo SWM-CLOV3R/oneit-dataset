@@ -1,11 +1,10 @@
 import pandas as pd
-from time import gmtime, strftime
+from time import gmtime, strftime, sleep
 
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 from crawling_func.env import YOUTUBE_API_KEY
-
 from crawling_func.preprocess import extract_urls, check_url, get_final_url
 
 # 영상에서 정보 뽑아오는 함수
@@ -59,6 +58,8 @@ def get_video(searchQ, maxCount, order="relevance"):
         temp_videoType = video_info["items"][0]["contentDetails"].get("duration")
         if len(temp_videoType) == 5: continue
         temp_videoViewcount = video_info["items"][0]["statistics"].get("viewCount")
+        if order == "relevance":
+            if int(temp_videoViewcount) < 10000 or temp_videoViewcount is None: continue
         if temp_videoViewcount is None:
             temp_videoViewcount = "0"
 
@@ -87,16 +88,24 @@ def get_video_by_keys(search_key_lst, maxCount, order="relevance"):
 
     for key in search_key_lst:
         data = get_video(key, maxCount, order)
+        sleep(2)
         df = pd.DataFrame.from_dict(data=data)
         df["searchQ"] = [key] * len(df)
         df = df[["searchQ", "id", "date", "title", "description", "channel", "tags", "type", "view"]]
         video_dataset = pd.concat([video_dataset, df],axis=0)
-
-    video_dataset.reset_index(inplace=True, drop=True)
-    video_dataset.drop_duplicates(subset="id", keep="first",inplace=True)
-    video_dataset.reset_index(inplace=True,drop=True)
     
-    path = "./YoutubeData/youtube_video_" + strftime("%Y-%m-%d_%H:%M", gmtime()) + ".csv"
+    video_dataset.reset_index(inplace=True, drop=True)
+    video_dataset = video_dataset.groupby("id").agg({"searchQ": ", ".join,
+                                                     "date" : "first", 
+                                                     "title" : "first", 
+                                                     "description" : "first", 
+                                                     "channel" : "first", 
+                                                     "tags" : "first", 
+                                                     "type" : "first", 
+                                                     "view" : "first"})
+    video_dataset.reset_index(inplace=True)
+
+    path = f"./YoutubeData/youtube_video_{order}_{strftime("%Y-%m-%d_%H:%M", gmtime())}.csv"
     video_dataset.to_csv(path)
 
     print(path, f"\n총 {len(video_dataset)}개의 영상이 수집되었습니다.")
@@ -119,7 +128,8 @@ def get_product_urls(video_dataset):
             # short url인 경우를 대비하여 최종 url 받아오기
             url = get_final_url(url)
             cut_idx = url.find('?')
-            url = url[:cut_idx]
+            if cut_idx != -1:
+                url = url[:cut_idx]
             # 제품에 대한 단어가 있는 경우
             if any(word in url for word in product_key): 
                 product_url.append(url)
@@ -132,7 +142,11 @@ def get_product_urls(video_dataset):
     productDF = pd.DataFrame([video_id, product_url]).T
     productDF.columns =["videoID", "productURL"]
     
-    path = "./YoutubeData/product_url_"+ strftime("%Y-%m-%d_%H:%M", gmtime()) + ".csv"
+    path = f"./YoutubeData/product_url_{strftime("%Y-%m-%d_%H:%M", gmtime())}.csv"
     productDF.to_csv(path)
 
     print(path, f"\n총 {len(productDF)}개의 제품 URL이 수집되었습니다.")
+
+
+if __name__ == "__main__":
+    get_video_by_keys(["선물 추천"], 10)#, order="relevance")

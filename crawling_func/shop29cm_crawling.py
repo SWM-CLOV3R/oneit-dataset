@@ -46,7 +46,6 @@ def get_29cm_product_info(url):
         current_price = soup.select_one('span.css-4bcxzt.ejuizc34').get_text().strip()
         original_price = current_price
         discount_rate = '0%'
-    # print(">> 0 <<")
 
     # 3. 브랜드 정보
     try:
@@ -59,7 +58,6 @@ def get_29cm_product_info(url):
         brand_link_inshop = None
         print(url, 'HTML class 이름이 변경된 것으로 추측됨')
         
-    # print(">> 1 <<")
     # 4. 상품 대표 이미지
     try:
         thumbnail = soup.select_one('div.css-122y91a.e3e1mx64').select_one('img')['src']
@@ -73,7 +71,7 @@ def get_29cm_product_info(url):
         category.append(cat.select_one('span.css-96h8o6.e1w312mf1').get_text())
     if len(category) > 0: category = '/'.join(category)
     else: category = None
-    # print(">> 2 <<")
+
     product_info_table = dict(product_name=product_name, 
                               original_price=original_price, current_price=current_price, discount_rate=discount_rate,
                               brand_name=brand_name,brand_description=brand_description,brand_link_inshop=brand_link_inshop,
@@ -85,7 +83,7 @@ def get_29cm_product_info(url):
         info_name , info_val = product_info.select_one('th').get_text().strip(), product_info.select_one('td').get_text().strip()
         if '상세페이지' in info_val: continue
         product_info_table[info_name] = info_val
-    # print(">> 3 <<")
+
     # 브라우저 닫기
     driver.quit()
 

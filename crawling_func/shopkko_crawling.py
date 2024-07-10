@@ -47,11 +47,11 @@ def get_kko_product_info(url):
     # 2. 가격
     if soup.select_one('span.txt_sale'): # 할인 함
         discount_rate = soup.select_one('span.txt_sale').get_text()
-        price = soup.select_one('div.info_product.clear_g').select_one('span.txt_price').get_text()
-        discount_price = soup.select_one('div.info_product.clear_g').select_one('span.txt_total').get_text()
+        original_price = soup.select_one('div.info_product.clear_g').select_one('span.txt_price').get_text()
+        current_price = soup.select_one('div.info_product.clear_g').select_one('span.txt_total').get_text()
     else: # 할인 안 함
-        discount_price = soup.select_one('div.info_product.clear_g').select_one('span.txt_total').get_text()
-        price = discount_price
+        current_price = soup.select_one('div.info_product.clear_g').select_one('span.txt_total').get_text()
+        original_price = current_price
         discount_rate = '0%'
         
     # 3. 브랜드 정보
@@ -80,7 +80,7 @@ def get_kko_product_info(url):
 
 
     product_info_table = dict(product_name=product_name, 
-                              price=price, discount_price=discount_price, discount_rate=discount_rate,
+                              original_price=original_price, current_price=current_price, discount_rate=discount_rate,
                               brand_name=brand_name,brand_link_inshop=brand_link_inshop,
                               thumbnail=thumbnail, category=category)
 

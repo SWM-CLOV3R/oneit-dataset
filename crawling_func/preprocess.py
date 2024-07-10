@@ -18,13 +18,14 @@ def get_final_url(short_url):
         response = requests.head(short_url, allow_redirects=True, timeout=5)
         return response.url
     except requests.exceptions.RequestException as e:
-        print(f"Failed to expand URL: {e}")
+        print(f"Failed to expand URL: {short_url} -> {e}")
         return short_url
     
 
 def extract_urls(text):
     # URL을 찾기 위한 정규 표현식 패턴
-    url_pattern = re.compile(r'(https?://\S+)')
+    # url_pattern = re.compile(r'(https?://\S+)')
+    url_pattern = re.compile(r'(https?://[^\s]+?)(?=\s|https?://|$)')
     # 패턴에 맞는 모든 URL을 찾기
     urls = url_pattern.findall(text)
     
@@ -38,7 +39,7 @@ def remove_non_numeric(input_string):
     return int(cleaned_string)
 
 def delete_info_from_product_name(product_name):
-    patterns = [r'\(.*?\)', r'\[.*?\]', r'\{.*?\}', r'<.*?>', r'\".*?\"', r'\'.*?\'', r'\d+종\s*택1', r'\d+종 중 택1', r'\d+종세트']
+    patterns = [r'\(.*?\)', r'\[.*?\]', r'\{.*?\}', r'<.*?>', r'\".*?\"', r'\'.*?\'', r'\d+종\s*택1', r'\d+종 중 택1', r'\d+종세트', r'\S*세트']
     for pattern in patterns:
         product_name = re.sub(pattern, '', product_name)
 

@@ -24,7 +24,6 @@ def get_final_url(short_url):
 
 def extract_urls(text):
     # URL을 찾기 위한 정규 표현식 패턴
-    # url_pattern = re.compile(r'(https?://\S+)')
     url_pattern = re.compile(r'(https?://[^\s]+?)(?=\s|https?://|$)')
     # 패턴에 맞는 모든 URL을 찾기
     urls = url_pattern.findall(text)
@@ -38,12 +37,15 @@ def remove_non_numeric(input_string):
     cleaned_string = re.sub(pattern, '', input_string)
     return int(cleaned_string)
 
+def remove_extra_spaces(text):
+    return re.sub(r'\s+', ' ', text).strip()
+
 def delete_info_from_product_name(product_name):
-    patterns = [r'\(.*?\)', r'\[.*?\]', r'\{.*?\}', r'<.*?>', r'\".*?\"', r'\'.*?\'', r'\d+종\s*택1', r'\d+종 중 택1', r'\d+종세트', r'\S*세트']
+    patterns = [r'\(.*?\)', r'\[.*?\]', r'\{.*?\}', r'<.*?>', r'\".*?\"', r'\'.*?\'', r'\d+종\s*택1', r'\d+종 중 택1', r'\d+종세트', r'\S*세트', r'출시']
     for pattern in patterns:
         product_name = re.sub(pattern, '', product_name)
-
-    product_name = product_name.strip()
+    
+    product_name = remove_extra_spaces(product_name)
     return product_name
 
 def split_product_name_by_special_characters(product_name):

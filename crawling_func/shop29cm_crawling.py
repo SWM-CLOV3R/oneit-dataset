@@ -7,6 +7,8 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 
+import time
+from crawling_func.preprocess import remove_non_numeric
 
 def get_29cm_product_info(url):
     # Selenium WebDriver 설정
@@ -44,12 +46,18 @@ def get_29cm_product_info(url):
         current_price = soup.select_one('span.css-4bcxzt.ejuizc34').get_text().strip()
         original_price = current_price
         discount_rate = '0%'
-    
-    # 3. 브랜드 정보
-    brand_name = soup.select_one('h3.css-1dncbyk.e1kth5844').get_text().strip()
-    brand_description = soup.select_one('p.css-8e7eit.e1kth5845').get_text().strip()
-    brand_link_inshop = soup.select_one('a.css-k95f3n.e1kth5841')['href']
 
+    # 3. 브랜드 정보
+    try:
+        brand_name = soup.select_one('h3.css-1dncbyk.e5nmrtp4').get_text().strip()
+        brand_description = soup.select_one('p.css-8e7eit.e5nmrtp5').get_text().strip()
+        brand_link_inshop = soup.select_one('a.css-12w33mp.e5nmrtp1')['href']
+    except:
+        brand_name = None
+        brand_description = None
+        brand_link_inshop = None
+        print(url, 'HTML class 이름이 변경된 것으로 추측됨')
+        
     # 4. 상품 대표 이미지
     try:
         thumbnail = soup.select_one('div.css-122y91a.e3e1mx64').select_one('img')['src']
@@ -81,3 +89,49 @@ def get_29cm_product_info(url):
 
     return product_info_table
 
+
+def get_29cm_product_reviews(url):
+    # Selenium WebDriver 설정
+    driver = webdriver.Chrome() 
+    driver.get(url) 
+    driver.find_element(By.XPATH, '//*[@id="__next"]/div[5]/div[2]/div[2]/div[1]/div/div[2]/button').click()
+
+    # 필요한 값이 로드될 때 까지 기다림
+    try : 
+        WebDriverWait(driver, 10).until(
+        EC.presence_of_element_located((By.CSS_SELECTOR, 'span.css-1f0l480.ex98du3'))#'div.css-70qvj9.ex98du4'))# 'section.e6fth966.css-1w043rb.ex98du0'))
+        )
+    except TimeoutException as e:
+        driver.quit()
+
+    html = driver.page_source
+    soup = BeautifulSoup(html, 'html.parser')
+
+    # 값 가져오기
+    review_count = remove_non_numeric(soup.select_one('span.css-1f0l480.ex98du3').get_text())
+    review_pages = int(soup.select_one('div.e13i1jpn4.css-1oq0g9s.ej7aofc0').select_one('ul.css-16vmvyd.ej7aofc1').select('li')[-1].get_text())
+    if review_pages > 5:
+        review_pages = 5
+
+    review_lst = []
+    for i in range(1, review_pages+1):
+        driver.find_element(By.XPATH, f'//*[@id="__next"]/div[7]/section[5]/div[3]/div/ul/li[{i}]/button').click()
+
+        review_wrapper = soup.select_one('section.e6fth966.css-1w043rb.ex98du0').select_one('ul.css-0.e13i1jpn1')
+
+        for review in review_wrapper.select('li'):
+            star_wrapper = review.select_one('div.css-18biwo.e8ryq2d0').select('i.css-9nop8.e8ryq2d1')
+            star_rate = 0
+            for star in star_wrapper:
+                if star.select_one('i.css-jcf0hl.e8ryq2d2') : star_rate += 1
+            created_at = review.select_one('span.css-1riowxi.eji1c1x6').get_text()
+            review_text = review.select_one('p.css-1yblk9b.eji1c1x8').get_text()
+            review_lst.append(dict(star_rate=star_rate,created_at=created_at,review_text=review_text))
+            time.sleep(3)
+
+    # 불러온 값이 None 일 때의 대비 아직 미완
+
+    # 브라우저 닫기
+    driver.quit()
+
+    return review_count, review_lst

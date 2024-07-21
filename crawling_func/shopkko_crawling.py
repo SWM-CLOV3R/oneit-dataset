@@ -10,6 +10,10 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 
+import time
+
+from crawling_func.preprocess import remove_non_numeric
+
 
 def get_kko_product_info(url):
     # Selenium WebDriver 설정
@@ -33,7 +37,7 @@ def get_kko_product_info(url):
     # 값 가져오기
     # 0. 상태 확인
     status = soup.select_one('product-stamp')
-    if status:
+    if status.get_text():
         driver.quit()
         print(url, '판매 중단')
         return None
@@ -43,11 +47,11 @@ def get_kko_product_info(url):
     # 2. 가격
     if soup.select_one('span.txt_sale'): # 할인 함
         discount_rate = soup.select_one('span.txt_sale').get_text()
-        price = soup.select_one('div.info_product.clear_g').select_one('span.txt_price').get_text()
-        discount_price = soup.select_one('div.info_product.clear_g').select_one('span.txt_total').get_text()
+        original_price = soup.select_one('div.info_product.clear_g').select_one('span.txt_price').get_text()
+        current_price = soup.select_one('div.info_product.clear_g').select_one('span.txt_total').get_text()
     else: # 할인 안 함
-        discount_price = soup.select_one('div.info_product.clear_g').select_one('span.txt_total').get_text()
-        price = discount_price
+        current_price = soup.select_one('div.info_product.clear_g').select_one('span.txt_total').get_text()
+        original_price = current_price
         discount_rate = '0%'
         
     # 3. 브랜드 정보
@@ -71,12 +75,12 @@ def get_kko_product_info(url):
         driver.find_element(By.XPATH, '//*[@id="mArticle"]/app-pw-result/div/div/app-search-result/app-option/div[2]/div/div/div/ul/li[2]/button').click()
 
     html_c = driver.page_source
-    soup = BeautifulSoup(html_c, 'html.parser')
-    category = soup.select_one('swiper-slide.list_slctcate.has_item_all.swiper-slide-active').select('li')[1].get_text().strip()
+    soup_c = BeautifulSoup(html_c, 'html.parser')
+    category = soup_c.select_one('swiper-slide.list_slctcate.has_item_all.swiper-slide-active').select('li')[1].get_text().strip()
 
 
     product_info_table = dict(product_name=product_name, 
-                              price=price, discount_price=discount_price, discount_rate=discount_rate,
+                              original_price=original_price, current_price=current_price, discount_rate=discount_rate,
                               brand_name=brand_name,brand_link_inshop=brand_link_inshop,
                               thumbnail=thumbnail, category=category)
 
@@ -92,3 +96,64 @@ def get_kko_product_info(url):
     driver.quit()
 
     return product_info_table
+
+
+def get_kko_product_reviews(url):
+    # Selenium WebDriver 설정
+    driver = webdriver.Chrome() 
+    driver.get(url + '?tab=review&sortProperty=LATEST') 
+
+    # 필요한 값이 로드될 때 까지 기다림
+    try : 
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, 'div.wrap_group.wrap_reviewcard'))
+        )
+    except TimeoutException as e:
+        driver.quit()
+        return None
+
+
+    html = driver.page_source
+    soup = BeautifulSoup(html, 'html.parser')
+
+    # 값 가져오기
+    try:
+        no_review = soup.select_one('div.wrap_group.wrap_noreview')
+        if no_review:
+            return 0, None
+    except:
+        pass
+    
+    
+    review_count = remove_non_numeric(soup.select_one('div.wrap_group.wrap_reviewcard').select_one('h4.tit_group').get_text())
+    review_wrapper = soup.select_one('div.wrap_group.wrap_reviewcard').select_one('ul.list_review')
+    # except: 
+    #     return -1, None # 판매 중지 혹은 품절 
+
+    # 더보기 미리 클릭
+    if (review_count - 1) // 20 > 0:
+        if (review_count - 1) // 20 > 5 : max_click = 5
+        else: max_click = (review_count - 1) // 20
+        
+        for press_count in range(max_click):
+            try:
+                driver.find_element(By.XPATH, '//*[@id="tabPanel_review"]/div/div[2]/button').click()
+                time.sleep(2)
+            except:
+                break
+    # 리뷰 수집
+    review_lst = []
+    for review in review_wrapper.select('app-view-review-item'):
+        star_rate = review.select_one('em.ico_detail').get_text()
+        created_at = review.select('span.txt_reviewinfo')[-1].get_text()
+        review_text = review.select_one('p.txt_review').get_text()
+        # print(star_rate,created_at,review_text)
+        review_lst.append(dict(star_rate=star_rate,created_at=created_at,review_text=review_text))
+        time.sleep(2)
+
+    # 불러온 값이 None 일 때의 대비 아직 미완
+
+    # 브라우저 닫기
+    driver.quit()
+
+    return review_count, review_lst

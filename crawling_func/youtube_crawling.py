@@ -80,10 +80,10 @@ def get_video(searchQ, maxCount, order="relevance"):
     data_dicts["tags"] = videoTags
     data_dicts["type"] = videoType
     data_dicts["view"] = videoViewcount 
-    
+
     return data_dicts
 
-def get_video_by_keys(search_key_lst, maxCount, order="relevance"):
+def get_video_by_keys(search_key_lst, maxCount, order="relevance", option="default"):
     video_dataset = pd.DataFrame(columns=["searchQ", "id", "date", "title", "description", "channel", "tags", "type", "view"])
 
     for key in search_key_lst:
@@ -109,7 +109,12 @@ def get_video_by_keys(search_key_lst, maxCount, order="relevance"):
     video_dataset.to_csv(path)
 
     print(path, f"\n총 {len(video_dataset)}개의 영상이 수집되었습니다.")
-    return video_dataset
+
+    if option == "path":
+        return path
+    else:
+        return video_dataset
+
 
 def get_product_urls(video_dataset):
     product_url = []
@@ -146,6 +151,8 @@ def get_product_urls(video_dataset):
     productDF.to_csv(path)
 
     print(path, f"\n총 {len(productDF)}개의 제품 URL이 수집되었습니다.")
+    return productDF
+
 
 
 if __name__ == "__main__":

@@ -1,23 +1,22 @@
-import time 
-from urllib import parse
-
 from bs4 import BeautifulSoup 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
-
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
-
-import time
+from urllib import parse
 
 from crawling_func.preprocess import remove_non_numeric
 
 
 def get_kko_product_info(url):
     # Selenium WebDriver 설정
-    driver = webdriver.Chrome() 
+    options = webdriver.ChromeOptions()
+    options.add_argument("--headless") # 창 띄우지 않기 옵션
+    options.add_argument("referer=https://gift.kakao.com/home")
+    options.add_argument("user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko)")
+    driver = webdriver.Chrome(options=options) 
     driver.get(url + '?tab=detail') 
 
     # 필요한 값이 로드될 때 까지 기다림
@@ -68,16 +67,17 @@ def get_kko_product_info(url):
     # 5. 상품 카테고리
     driver.get('https://gift.kakao.com/search/result?query=' + parse.quote(product_name) +'&searchType=typing_keyword') 
 
-    time.sleep(5)
+    # time.sleep(5)
     try:
-        driver.find_element(By.XPATH, '//*[@id="mArticle"]/app-pw-result/div/div/app-search-result/app-option/div[3]/div/div/div/ul/li[2]/button').click()
+        try:
+            driver.find_element(By.XPATH, '//*[@id="mArticle"]/app-pw-result/div/div/app-search-result/app-option/div[3]/div/div/div/ul/li[2]/button').click()
+        except:
+            driver.find_element(By.XPATH, '//*[@id="mArticle"]/app-pw-result/div/div/app-search-result/app-option/div[2]/div/div/div/ul/li[2]/button').click()
+        html_c = driver.page_source
+        soup_c = BeautifulSoup(html_c, 'html.parser')
+        category = soup_c.select_one('swiper-slide.list_slctcate.has_item_all.swiper-slide-active').select('li')[1].get_text().strip()
     except:
-        driver.find_element(By.XPATH, '//*[@id="mArticle"]/app-pw-result/div/div/app-search-result/app-option/div[2]/div/div/div/ul/li[2]/button').click()
-
-    html_c = driver.page_source
-    soup_c = BeautifulSoup(html_c, 'html.parser')
-    category = soup_c.select_one('swiper-slide.list_slctcate.has_item_all.swiper-slide-active').select('li')[1].get_text().strip()
-
+        category = None
 
     product_info_table = dict(product_name=product_name, 
                               original_price=original_price, current_price=current_price, discount_rate=discount_rate,
@@ -138,7 +138,7 @@ def get_kko_product_reviews(url):
         for press_count in range(max_click):
             try:
                 driver.find_element(By.XPATH, '//*[@id="tabPanel_review"]/div/div[2]/button').click()
-                time.sleep(2)
+                # time.sleep(2)
             except:
                 break
     # 리뷰 수집
@@ -149,7 +149,7 @@ def get_kko_product_reviews(url):
         review_text = review.select_one('p.txt_review').get_text()
         # print(star_rate,created_at,review_text)
         review_lst.append(dict(star_rate=star_rate,created_at=created_at,review_text=review_text))
-        time.sleep(2)
+        # time.sleep(2)
 
     # 불러온 값이 None 일 때의 대비 아직 미완
 
@@ -157,3 +157,9 @@ def get_kko_product_reviews(url):
     driver.quit()
 
     return review_count, review_lst
+
+if __name__ == "__main__":
+    print("test sample")
+    url = "https://gift.kakao.com/product/5714345"
+    result = get_kko_product_info(url)
+    print(result)

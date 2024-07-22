@@ -1,18 +1,23 @@
-from bs4 import BeautifulSoup 
+from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
-
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 
-import time
 from crawling_func.preprocess import remove_non_numeric
 
 def get_29cm_product_info(url):
-    # Selenium WebDriver 설정
-    driver = webdriver.Chrome() 
+    # Selenium WebDriver setting
+    options = webdriver.ChromeOptions()
+    options.add_argument("--headless") # 창 띄우지 않기 옵션
+    # options.add_argument('--no-sandbox') # 샌드박스 모드를 비활성화 -> 호환성 문제 해결 but 보안 기능 비활성화 
+    # options.add_argument('--disable-dev-shm-usage') # 공유 메모리 사용을 비활성화
+    options.add_argument("referer=https://product.29cm.co.kr")
+    options.add_argument("user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko)")
+    driver = webdriver.Chrome(options=options)
+
     driver.get(url) 
 
     # 필요한 값이 로드될 때 까지 기다림
@@ -49,9 +54,9 @@ def get_29cm_product_info(url):
 
     # 3. 브랜드 정보
     try:
-        brand_name = soup.select_one('h3.css-1dncbyk.e5nmrtp4').get_text().strip()
-        brand_description = soup.select_one('p.css-8e7eit.e5nmrtp5').get_text().strip()
-        brand_link_inshop = soup.select_one('a.css-12w33mp.e5nmrtp1')['href']
+        brand_name = soup.select_one('h3.css-1dncbyk.eezztd84').get_text().strip()
+        brand_description = soup.select_one('p.css-8e7eit.eezztd85').get_text().strip()
+        brand_link_inshop = soup.select_one('a.css-12w33mp.eezztd81')['href']
     except:
         brand_name = None
         brand_description = None
@@ -92,7 +97,10 @@ def get_29cm_product_info(url):
 
 def get_29cm_product_reviews(url):
     # Selenium WebDriver 설정
-    driver = webdriver.Chrome() 
+    options = webdriver.ChromeOptions()
+    options.add_argument("referer=https://product.29cm.co.kr/")
+    options.add_argument("user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko)")
+    driver = webdriver.Chrome(options=options) 
     driver.get(url) 
     driver.find_element(By.XPATH, '//*[@id="__next"]/div[5]/div[2]/div[2]/div[1]/div/div[2]/button').click()
 
@@ -127,11 +135,15 @@ def get_29cm_product_reviews(url):
             created_at = review.select_one('span.css-1riowxi.eji1c1x6').get_text()
             review_text = review.select_one('p.css-1yblk9b.eji1c1x8').get_text()
             review_lst.append(dict(star_rate=star_rate,created_at=created_at,review_text=review_text))
-            time.sleep(3)
-
-    # 불러온 값이 None 일 때의 대비 아직 미완
+            # sleep(3)      
 
     # 브라우저 닫기
     driver.quit()
 
     return review_count, review_lst
+
+if __name__ == "__main__":
+    print("test sample")
+    url = "https://product.29cm.co.kr/catalog/552913"
+    result = get_29cm_product_info(url)
+    print(result)

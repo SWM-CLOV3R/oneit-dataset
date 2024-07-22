@@ -1,10 +1,20 @@
 import time
+import re
+
+from bs4 import BeautifulSoup 
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException
 import urllib.request
+
 from crawling_func.preprocess import delete_info_from_product_name, split_product_name_by_special_characters
 from crawling_func.env import NAVER_CLIENT_ID, NAVER_CLIENT_SECRET
+
 import ssl
 import warnings
-import re
 
 warnings.filterwarnings("ignore", category=SyntaxWarning)
 ssl._create_default_https_context = ssl._create_unverified_context
@@ -50,6 +60,16 @@ def search_category(product_name, brand_name):
             if category : 
                 print("-> find product success!")
                 break
+    if not category:
+        search_similar_product_url = "https://search.shopping.naver.com/search/all?query=" + product_name
+        driver = webdriver.Chrome() 
+        driver.get(search_similar_product_url) 
+        html = driver.page_source
+        soup = BeautifulSoup(html, 'html.parser')
+        title = soup.select_one("div.basicList_list_basis__uNBZx.basicList_has_border__5aEnS").select_one("div.product_item__MDtDF").select_one("div.product_inner__gr8QR").select_one("div.product_title__Mmw2K").get_text()
+        get_category_in_naver(title, brand_name)
+
+
     # 예외 처리를 위한 임시 방편. 추후 수정
     if not category:
         time.sleep(3)
@@ -68,7 +88,7 @@ def search_category(product_name, brand_name):
 
 def get_product_info(product_name, info_type):
     encText = urllib.parse.quote(product_name)
-    url = "https://openapi.naver.com/v1/search/shop?query=" + encText + "&display=3"  # JSON 결과
+    url = "https://openapi.naver.com/v1/search/shop?query=" + encText + "&display1"  # JSON 결과
     request = urllib.request.Request(url)
     request.add_header("X-Naver-Client-Id", NAVER_CLIENT_ID)
     request.add_header("X-Naver-Client-Secret", NAVER_CLIENT_SECRET)
@@ -89,3 +109,14 @@ def get_product_info(product_name, info_type):
         print("Error : No Response ->" + product_name)
 
     return None
+
+if __name__ == "__main__":
+    url = "https://search.shopping.naver.com/search/all?query="+"슬밋 퍼퓸 핸드크림"
+    driver = webdriver.Chrome() 
+    driver.get(url) 
+
+    html = driver.page_source
+    soup = BeautifulSoup(html, 'html.parser')
+    lst = soup.select_one("div.basicList_list_basis__uNBZx.basicList_has_border__5aEnS")
+    item = soup.select_one("div.product_item__MDtDF").select_one("div.product_inner__gr8QR").select_one("div.product_title__Mmw2K").get_text()
+    print(item)

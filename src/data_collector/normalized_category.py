@@ -1,3 +1,5 @@
+import sys
+import os
 import time
 import re
 
@@ -10,8 +12,13 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 import urllib.request
 
-from crawling_func.preprocess import delete_info_from_product_name, split_product_name_by_special_characters
-from crawling_func.env import NAVER_CLIENT_ID, NAVER_CLIENT_SECRET
+# 경로 설정
+current_dir = os.path.dirname(os.path.abspath(__file__))
+src_dir = os.path.abspath(os.path.join(current_dir, '..'))
+sys.path.append(src_dir)
+
+from preprocess import delete_info_from_product_name, split_product_name_by_special_characters
+from secret import NAVER_CLIENT_ID, NAVER_CLIENT_SECRET
 
 import ssl
 import warnings

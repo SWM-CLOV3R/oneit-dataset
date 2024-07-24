@@ -1,12 +1,21 @@
-from crawling_func.youtube_crawling import get_video_by_keys, get_product_urls
-from crawling_func.shopkko_crawling import get_kko_product_info, get_kko_product_reviews
-from crawling_func.shop29cm_crawling import get_29cm_product_info, get_29cm_product_reviews
-from crawling_func.preprocess import remove_non_numeric,remove_extra_spaces
-from crawling_func.normalized_category import search_category
+from youtube_crawling import get_video_by_keys, get_product_urls
+from shopkko_crawling import get_kko_product_info, get_kko_product_reviews
+from shop29cm_crawling import get_29cm_product_info, get_29cm_product_reviews
+from preprocess import remove_non_numeric,remove_extra_spaces
+from normalized_category import search_category
 
+import sys
+import os
 import pandas as pd
 from time import gmtime, strftime, sleep
 import re
+
+# 경로 설정
+current_dir = os.path.dirname(os.path.abspath(__file__))
+src_dir = os.path.abspath(os.path.join(current_dir, '..'))
+sys.path.append(src_dir)
+
+from config import DATA_PATH
 
 # 데이터셋 초기 업로드
 # 기존 DB에 있는 데이터인지 확인하는 작업 아직 없음
@@ -122,7 +131,7 @@ def get_product_data(keyword_lst, mall_lst):
         sleep(5)
     product_info_lst   
 
-    path = "./productInfo/product_rawdata"+ strftime("%Y-%m-%d_%H:%M", gmtime()) + ".csv"
+    path = DATA_PATH + "product_rawdata"+ strftime("%Y-%m-%d_%H:%M", gmtime()) + ".csv"
     product_InfoDF.to_csv(path)
 
     

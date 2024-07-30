@@ -1,11 +1,18 @@
+import sys
+import os
 import pandas as pd
 from time import gmtime, strftime, sleep
 
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-from crawling_func.env import YOUTUBE_API_KEY
-from crawling_func.preprocess import extract_urls, check_url, get_final_url
+# 경로 설정
+current_dir = os.path.dirname(os.path.abspath(__file__))
+src_dir = os.path.abspath(os.path.join(current_dir, '..'))
+sys.path.append(src_dir)
+
+from secret import YOUTUBE_API_KEY
+from preprocess import extract_urls, check_url, get_final_url
 
 # 영상에서 정보 뽑아오는 함수
 # 스크립트 정보 제외

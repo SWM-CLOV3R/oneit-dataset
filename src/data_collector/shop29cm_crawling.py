@@ -6,7 +6,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 
-from crawling_func.preprocess import remove_non_numeric
+from preprocess import remove_non_numeric
 
 def get_29cm_product_info(url):
     # Selenium WebDriver setting

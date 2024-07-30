@@ -7,7 +7,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 from urllib import parse
 
-from crawling_func.preprocess import remove_non_numeric
+from preprocess import remove_non_numeric
 
 
 def get_kko_product_info(url):

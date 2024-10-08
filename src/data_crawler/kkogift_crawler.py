@@ -10,7 +10,6 @@ from webdriver_manager.chrome import ChromeDriverManager
 import json
 import re
 
-from preprocess import change_val_response
 from base_crawler import Crawler
 
 class KkoGiftCrawler(Crawler):
@@ -55,7 +54,7 @@ class KkoGiftCrawler(Crawler):
         return page_source, response
 
     def parse_content(self, page_source, response):
-        item_info = change_val_response([value for key, value in response.items() if "product-detail/v2/products/"+self.url.split('/')[-1] in key][0])
+        item_info = json.loads([value for key, value in response.items() if "product-detail/v2/products/"+self.url.split('/')[-1] in key][0]['body'])
  
         # 제품명
         name = item_info['itemDetails']['item']['displayName']
@@ -66,7 +65,7 @@ class KkoGiftCrawler(Crawler):
         
         # 브랜드
         brand = item_info['itemDetails']['brand']['name']
-        brand_other = change_val_response([value for key, value in response.items() if "brandProducts" in key][0])
+        brand_other = json.loads([value for key, value in response.items() if "brandProducts" in key][0]['body'])
 
         # 제품군 카테고리 (쇼핑몰 규정)
         category_inmall = item_info['itemDetails']['item']['supplyChannelCategoryName']
@@ -74,20 +73,20 @@ class KkoGiftCrawler(Crawler):
         # 옵션 정보
         option = None
         custom = None
-        option_info = change_val_response([value for key, value in response.items() if "options" in key][0])
+        option_info = json.loads([value for key, value in response.items() if "options" in key][0]['body'])
         if option_info['type'] == 'NONE': 
             option = []
         elif option_info['type'] == 'COMBINATION':
-            option = []
+            option = dict()
             option_combi = option_info['combinationOptions']
             for i in range(len(option_info['names'])):
                 tmp = set()
                 for j in range(len(option_combi)):
                     tmp.add(option_combi[j]['value'])
-                option.append(tmp)
+                option[option_info['names'][i]] = tmp
                 option_combi = option_combi[0]['options']
         elif option_info['type'] == 'COMBINATION_CUSTOM':
-            custom = option_info['customs']['name']
+            custom = [option_info['customs']['name']]
 
         # 이미지 (thumbnail, details)
         thumbnail_urls = []
@@ -96,18 +95,18 @@ class KkoGiftCrawler(Crawler):
         detail_urls = re.findall(r'src="(https?://[^"]+)"', item_info['itemDetails']['item']['productDetailDescription'])
 
         # 리뷰수, 리뷰
-        review_count = change_val_response([value for key, value in response.items() if "review" in key and 'sortProperty' in key][0])['reviewList']['totalCount']
-        review = change_val_response([value for key, value in response.items() if "review" in key and 'sortProperty' in key][0])['reviewList']['contents']
+        review_count = json.loads([value for key, value in response.items() if "review" in key and 'sortProperty' in key][0]['body'])['reviewList']['totalCount']
+        review = json.loads([value for key, value in response.items() if "review" in key and 'sortProperty' in key][0]['body'])['reviewList']['contents']
 
         # 평균 평점, 위시리스트 담은 수
-        avg_rating = change_val_response([value for key, value in response.items() if "review" in key and 'stat' in key][0])['averageProductRating']
-        wish_count = change_val_response([value for key, value in response.items() if "wish" in key][0])['wishCount']
+        avg_rating = json.loads([value for key, value in response.items() if "review" in key and 'stat' in key][0]['body'])['averageProductRating']
+        wish_count = json.loads([value for key, value in response.items() if "wish" in key][0]['body'])['wishCount']
         
         # 관련있는 제품 리스트
-        recommend = change_val_response([value for key, value in response.items() if "recommends" in key][0])
+        recommend = json.loads([value for key, value in response.items() if "recommends" in key][0]['body'])
 
         # 배송 정보, 공지
-        notice = change_val_response([value for key, value in response.items() if "notice" in key][0])['giftNotices']
+        notice = json.loads([value for key, value in response.items() if "notice" in key][0]['body'])['giftNotices']
 
         return
     

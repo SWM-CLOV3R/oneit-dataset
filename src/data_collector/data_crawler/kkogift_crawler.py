@@ -9,7 +9,11 @@ from webdriver_manager.chrome import ChromeDriverManager
 
 import json
 import re
+import os
+import sys
 
+current_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(os.path.abspath(os.path.join(current_dir)))
 from base_crawler import Crawler
 
 class KkoGiftCrawler(Crawler):
@@ -32,10 +36,10 @@ class KkoGiftCrawler(Crawler):
             print(self.url, '페이지 접근에서 문제 발생')
             return None
         
-        page_source = driver.page_source
+        content = dict()
+        content['page_source'] = driver.page_source
 
         logs = driver.get_log('performance')
-        response = dict()
         for log in logs:
             log_json = json.loads(log["message"])["message"]
             if 'Network.responseReceived' in log_json['method']:
@@ -43,18 +47,16 @@ class KkoGiftCrawler(Crawler):
                     request_id = log_json['params']['requestId']
                     request_url = log_json['params']['response']['url']
                     if self.url.split("/")[-1] in request_url and '_=' in request_url:
-                        # print(request_url)
                         response_body = driver.execute_cdp_cmd('Network.getResponseBody', {'requestId': request_id})
-                        # print(request_id,request_url, response_body,"\n")
-                        response[request_url] = response_body
+                        content[request_url] = response_body
                 except:
                     pass
         driver.quit()
 
-        return page_source, response
+        return content
 
-    def parse_content(self, page_source, response):
-        item_info = json.loads([value for key, value in response.items() if "product-detail/v2/products/"+self.url.split('/')[-1] in key][0]['body'])
+    def parse_content(self, content):
+        item_info = json.loads([value for key, value in content.items() if "product-detail/v2/products/"+self.url.split('/')[-1] in key][0]['body'])
  
         # 제품명
         name = item_info['itemDetails']['item']['displayName']
@@ -64,18 +66,17 @@ class KkoGiftCrawler(Crawler):
         current_price = int(item_info['itemDetails']['item']['sellingPrice'])
         
         # 브랜드
-        brand = item_info['itemDetails']['brand']['name']
-        brand_other = json.loads([value for key, value in response.items() if "brandProducts" in key][0]['body'])
+        brand = (item_info['itemDetails']['brand']['name'], None)
+        brand_other = json.loads([value for key, value in content.items() if "brandProducts" in key][0]['body'])
 
         # 제품군 카테고리 (쇼핑몰 규정)
         category_inmall = item_info['itemDetails']['item']['supplyChannelCategoryName']
         
         # 옵션 정보
-        option = None
-        custom = None
-        option_info = json.loads([value for key, value in response.items() if "options" in key][0]['body'])
+        option_info = json.loads([value for key, value in content.items() if "options" in key][0]['body'])
         if option_info['type'] == 'NONE': 
-            option = []
+            option = None
+            custom = None
         elif option_info['type'] == 'COMBINATION':
             option = dict()
             option_combi = option_info['combinationOptions']
@@ -83,11 +84,23 @@ class KkoGiftCrawler(Crawler):
                 tmp = set()
                 for j in range(len(option_combi)):
                     tmp.add(option_combi[j]['value'])
-                option[option_info['names'][i]] = tmp
+                option[option_info['names'][i]] = list(tmp)
                 option_combi = option_combi[0]['options']
+            custom = None
         elif option_info['type'] == 'COMBINATION_CUSTOM':
+            option = dict()
+            option_combi = option_info['combinationOptions']
+            for i in range(len(option_info['names'])):
+                tmp = set()
+                for j in range(len(option_combi)):
+                    tmp.add(option_combi[j]['value'])
+                option[option_info['names'][i]] = list(tmp)
+                option_combi = option_combi[0]['options']
             custom = [option_info['customs']['name']]
 
+        # 성별
+        gender = None
+        
         # 이미지 (thumbnail, details)
         thumbnail_urls = []
         thumbnail_urls.append(item_info['itemDetails']['item']['imageUrl'])
@@ -95,25 +108,39 @@ class KkoGiftCrawler(Crawler):
         detail_urls = re.findall(r'src="(https?://[^"]+)"', item_info['itemDetails']['item']['productDetailDescription'])
 
         # 리뷰수, 리뷰
-        review_count = json.loads([value for key, value in response.items() if "review" in key and 'sortProperty' in key][0]['body'])['reviewList']['totalCount']
-        review = json.loads([value for key, value in response.items() if "review" in key and 'sortProperty' in key][0]['body'])['reviewList']['contents']
+        review_info = json.loads([value for key, value in content.items() if "review" in key and 'sortProperty' in key][0]['body'])
+        review_count = review_info['reviewList']['totalCount']
+        review = review_info['reviewList']['contents']
 
         # 평균 평점, 위시리스트 담은 수
-        avg_rating = json.loads([value for key, value in response.items() if "review" in key and 'stat' in key][0]['body'])['averageProductRating']
-        wish_count = json.loads([value for key, value in response.items() if "wish" in key][0]['body'])['wishCount']
+        avg_rating = json.loads([value for key, value in content.items() if "review" in key and 'stat' in key][0]['body'])['averageProductRating']
+        wish_count = json.loads([value for key, value in content.items() if "wish" in key][0]['body'])['wishCount']
         
         # 관련있는 제품 리스트
-        recommend = json.loads([value for key, value in response.items() if "recommends" in key][0]['body'])
+        recommend = json.loads([value for key, value in content.items() if "recommends" in key][0]['body'])
 
         # 배송 정보, 공지
-        notice = json.loads([value for key, value in response.items() if "notice" in key][0]['body'])['giftNotices']
+        notice = json.loads([value for key, value in content.items() if "notice" in key][0]['body'])['giftNotices']
 
-        return
+        info_table = dict(name=name,
+                          original_price=original_price, current_price=current_price,
+                          brand=brand, brand_other=brand_other,
+                          category_inmall=category_inmall,
+                          option=option, custom=custom, gender=gender,
+                          thumbnail_urls=thumbnail_urls, detail_urls=detail_urls,
+                          review=review, review_count=review_count,
+                          rate_avg=avg_rating, wish_count=wish_count,
+                          recommend=recommend, notice=notice)
+        return info_table
     
 if __name__ == '__main__':
     url = 'https://gift.kakao.com/product/2383657' # two option 
     url = 'https://gift.kakao.com/product/8535337' #one option
     one_options = 'https://gift.kakao.com/product/7290915'
     custom = 'https://gift.kakao.com/product/9946004'
+    url = 'https://gift.kakao.com/product/2383657'
+    url = 'https://gift.kakao.com/product/1068105'
     crawler = KkoGiftCrawler(url)
     content = crawler.run()
+    print(content['custom'])
+    print(content['detail_urls'])

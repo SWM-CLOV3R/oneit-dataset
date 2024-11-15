@@ -1,140 +1,297 @@
-from youtube_crawling import get_video_by_keys, get_product_urls
-from shopkko_crawling import get_kko_product_info, get_kko_product_reviews
-from shop29cm_crawling import get_29cm_product_info, get_29cm_product_reviews
-from preprocess import remove_non_numeric,remove_extra_spaces
-from normalized_category import search_category
+from sqlalchemy import create_engine, text
+from sqlalchemy import Column, Integer, Text, JSON, String, Float
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
 
-import sys
+import json
 import os
-import pandas as pd
-from time import gmtime, strftime, sleep
-import re
+import sys
+from time import sleep
 
-# 경로 설정
 current_dir = os.path.dirname(os.path.abspath(__file__))
-src_dir = os.path.abspath(os.path.join(current_dir, '..'))
-sys.path.append(src_dir)
+sys.path.append(os.path.abspath(os.path.join(current_dir, '..', '..')))
+sys.path.append(os.path.abspath(os.path.join(current_dir, '..')))
 
-from config import DATA_PATH
+from data_crawler.cm29_crawler import CM29Crawler
+from data_crawler.kkogift_crawler import KkoGiftCrawler
+from data_crawler.musinsa_crawler import MusinsaCralwer
+from generation.description_generator import DescriptionCreator
+from generation.tagging import TagCreator
+from get_source.youtube_resource import YoutubeResource
 
-# 데이터셋 초기 업로드
-# 기존 DB에 있는 데이터인지 확인하는 작업 아직 없음
-def get_product_data(keyword_lst, mall_lst):
-    relevance_data = get_video_by_keys(keyword_lst, 30)
-    current_data = get_video_by_keys(keyword_lst, 80, order="date")
+from preprocess import delete_info_from_product_name, remove_extra_spaces
+from category_normalize import search_category
+from secret import *
 
-    data = pd.concat([relevance_data, current_data])
-    data.reset_index(inplace=True, drop=True)
-    data = data.groupby("id").agg({"searchQ": ", ".join,
-                                                    "date" : "first", 
-                                                    "title" : "first", 
-                                                    "description" : "first", 
-                                                    "channel" : "first", 
-                                                    "tags" : "first", 
-                                                    "type" : "first", 
-                                                    "view" : "first"})
-    data.reset_index(inplace=True)
+Base = declarative_base()
+class RawContent(Base):
+    __tablename__ = 'raw_content'
+    idx = Column(Integer, primary_key=True, autoincrement=True)
+    url = Column(Text)
+    content = Column(JSON)
 
-    data["searchQ"] = data["searchQ"].apply(lambda x: x.split(", "))
-
-    products = get_product_urls(data)
-    products.drop_duplicates(subset=["productURL"],inplace=True)
-    products.reset_index(drop=True, inplace=True)
-
-
-    product_shoppingmall = []
-    for url in products["productURL"]:
-        if "29cm" in url : product_shoppingmall.append("29cm")
-        elif any(shop in url for shop in ["gift.kakao", "kko.to"]): product_shoppingmall.append("카카오 선물하기")
-        elif "coupang" in url: product_shoppingmall.append("쿠팡")
-        elif "wconcept" in url: product_shoppingmall.append("wconcept")
-        elif "smartstore" in url: product_shoppingmall.append("네이버")
-        elif any(shop in url for shop in ["sivillage", "lotteon", "hmall"]): product_shoppingmall.append("백화점/홈쇼핑 몰")
-        elif "oliveyoung" in url: product_shoppingmall.append("올리브영")
-        elif any(shop in url for shop in ["eqlstore", "collecionb", "ohou.se"]): product_shoppingmall.append("인테리어/오브제 몰")
-        elif "kurly" in url: product_shoppingmall.append("마켓컬리")
-        elif "wconcept" in url: product_shoppingmall.append("29cm")
-        elif "makers.kakao" in url: product_shoppingmall.append("")
-        else: product_shoppingmall.append("기타 쇼핑몰")
-
-    products["shoppingmall"] = product_shoppingmall
+def get_crawler(url:str):
+    if '29cm' in url:
+        return CM29Crawler(url)
+    elif  'kko.to' in url or 'gift.kakao.com' in url:
+        return KkoGiftCrawler(url)
+    elif 'musinsa' in url:
+        return MusinsaCralwer(url)
+    else:
+        raise ValueError(f"지원하지 않는 URL입니다: {url}")
     
-    video_ids = []
-    urls = []
-    product_info = []
-    malls = []
-    for idx, url in enumerate(products["productURL"]):
-        if products["shoppingmall"][idx] == "카카오 선물하기":
-            try: 
-                temp_info =  get_kko_product_info(url)
-                product_info.append(temp_info)
-                urls.append(url)
-                malls.append(products["shoppingmall"][idx])
-                video_ids.append(products["videoID"][idx])
-            except:
-                print(f"excepted : {idx}")
-                product_info.append(None)
-                urls.append(url)
-                malls.append(products["shoppingmall"][idx])
-                video_ids.append(products["videoID"][idx])
-        elif products["shoppingmall"][idx] == "29cm":
-            try: 
-                temp_info =  get_29cm_product_info(url)
-                product_info.append(temp_info)
-                urls.append(url)
-                malls.append(products["shoppingmall"][idx])
-                video_ids.append(products["videoID"][idx])
-            except:
-                print(f"excepted : {idx}")
-                product_info.append(None)
-                urls.append(url)
-                malls.append(products["shoppingmall"][idx])
-                video_ids.append(products["videoID"][idx])  
+def get_product_data(url:str):
+    # DB설정
+    connection_url = f"mysql+mysqldb://{LOCAL_USER_NAME}:{LOCAL_PASSWORD}@localhost:{PORT}/{TEST_DATABASE}"
+    engine = create_engine(connection_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    try:
+        # URL이 이미 존재하는지 확인
+        existing_product = session.execute(
+            text("SELECT idx FROM product WHERE product_url = :url"),
+            {"url": url}
+        ).fetchone()
+
+        if existing_product:
+            print(f"URL {url}은 이미 존재합니다.")
+            product_idx = existing_product[0]
+
+            existing_raw_content = session.execute(
+                text("SELECT idx FROM raw_content WHERE url = :url"),
+                {"url": url}
+            ).fetchone()           
+        
+        else:
+            result = session.execute(
+                text("INSERT INTO product (product_url, status) VALUES (:url, 'ACTIVE')"),
+                {"url": url}
+            )
+            session.commit()
+            product_idx = result.lastrowid
+
+        # 크롤링 수행
+        crawler = get_crawler(url)
+        
+        crawler.cookie_maker()
+        content = crawler.fetch_content()
+
+        if not content:
+            print(f'no contents in page: {url}')
+            return
+
+        # Raw content 테이블에 컨텐츠 넣기
+        existing_raw_content = session.execute(
+                text("SELECT idx FROM raw_content WHERE url = :url"),
+                {"url": url}
+            ).fetchone()
+            
+        if existing_raw_content:
+            raw_content_idx = existing_raw_content[0]
+        else:
+            raw_content = json.dumps(content)
+            new_raw_content = RawContent(url=url, content=raw_content)
+            session.add(new_raw_content)
+            session.commit()
+            raw_content_idx = result.lastrowid
+
+        # 컨텐츠 파싱
+        product_info =  crawler.parse_content(content)
+        
+        update_query =  """
+                            UPDATE product 
+                            SET
+                                name = :name,
+                                brand_name = :brand_name,
+                                original_price = :original_price,
+                                current_price = :current_price,
+                                mall_name = :mall_name,
+                                thumbnail_url = :thumbnail_url,
+                                details_url = :details_url,
+                                gender = :gender,
+                                category_inmall = :category_inmall,
+                                option_lst = :option_lst,
+                                custom = :custom,
+                                reviews = :reviews,
+                                review_count = :review_count,
+                                rate_avg = :rate_avg,
+                                wish_count = :wish_count,
+                                recommend = :recommend,
+                                brand_other = :brand_other,
+                                raw_response_idx = :raw_response_idx
+                            WHERE idx = :idx
+                        """
+
+        session.execute(text(update_query), {
+            "name": remove_extra_spaces(delete_info_from_product_name(product_info['name'])),
+            "brand_name": product_info['brand'][0],
+            "original_price": product_info['original_price'],
+            "current_price": product_info['current_price'],
+            "mall_name": crawler.__class__.__name__.replace('Crawler', ''),
+            "thumbnail_url": str(product_info['thumbnail_urls']),
+            "details_url": str(product_info['detail_urls']),
+            "gender": product_info['gender'],# if product_info['gender'] else None,
+            "category_inmall": product_info['category_inmall'],
+            "option_lst": json.dumps(product_info['option']), # if product_info['option'] else None,
+            "custom": ', '.join(product_info['custom']) if product_info['custom'] else None,
+            "reviews": json.dumps(product_info['review']),
+            "review_count": product_info['review_count'],
+            "rate_avg": product_info['rate_avg'],# if product_info['custom'] else None,
+            "wish_count": product_info['wish_count'],# if product_info['custom'] else None,
+            "recommend": json.dumps(product_info['recommend']),
+            "brand_other": json.dumps(product_info['brand_other']),
+            "raw_response_idx": raw_content_idx,
+            "idx": product_idx
+        })
+
+        session.commit()
+        print(f"제품 정보 파싱 완료. (idx: {product_idx})")
+
+        # 카테고리 정규화
+        norm_category = search_category(product_info['name'], product_info['brand'][0])
+        if norm_category:
+            # category_display_name 업데이트
+            update_category_query = """
+                UPDATE product 
+                SET category_display_name = :category_display_name
+                WHERE idx = :idx
+            """
+            session.execute(text(update_category_query), {
+                "category_display_name": norm_category,
+                "idx": product_idx
+            })
+
+            # 대분류 찾기
+            main_category = norm_category.split('>')[0].strip()
+
+            # category 테이블에서 대분류에 해당하는 category_idx 찾기
+            category_query = """
+                SELECT idx FROM category
+                WHERE name = :main_category
+            """
+            category_result = session.execute(text(category_query), {
+                "main_category": main_category
+            }).fetchone()
+
+            if category_result:
+                category_idx = category_result[0]
+                # product 테이블의 category_idx 업데이트
+                update_category_idx_query = """
+                    UPDATE product 
+                    SET category_idx = :category_idx
+                    WHERE idx = :idx
+                """
+                session.execute(text(update_category_idx_query), {
+                    "category_idx": category_idx,
+                    "idx": product_idx
+                })
+
+        session.commit()
+        print(f"카테고리 정보 업데이트 완료. (idx: {product_idx})")
     
-    products = pd.DataFrame({"videoID":video_ids, "productURL":urls, "productInfo":product_info, "shoppingmall":malls})
+        # description 생성 + DB 업데이트
+        reviews = product_info['review']
+        description = DescriptionCreator().creat_description(product_info['detail_urls'])#, reviews)
+        update_description_query = """
+            UPDATE product 
+            SET description = :description
+            WHERE idx = :idx
+        """
+        session.execute(text(update_description_query), {
+            "description": description,
+            "idx": product_idx
+        })
+        session.commit()
+        print(f"상품 요약 정보 업데이트 완료. (idx: {product_idx})")
 
-    products.dropna(subset=["productInfo"], inplace=True)
-    products.reset_index(drop=True, inplace=True)
-    product_InfoDF = pd.DataFrame(columns=["videoID", "productURL","shoppingmall", "product_name", "original_price", "current_price", "discount_rate", "brand_name", "brand_description", "brand_link_inshop", "thumbnail", "category"])
-    for idx in range(len(products)):
-        item = products["productInfo"].iloc[idx]
-        item["videoID"] = products["videoID"].iloc[idx]
-        item["productURL"] = products["productURL"].iloc[idx]
-        item["shoppingmall"] = products["shoppingmall"].iloc[idx]
-        try:
-            tempDF = pd.DataFrame([item])[["videoID", "productURL", "shoppingmall", "product_name", "original_price", "current_price", "discount_rate", "brand_name", "brand_description", "brand_link_inshop", "thumbnail", "category"]]      
-        except:
-            item["brand_description"] = None
-            tempDF = pd.DataFrame([item])[["product_name", "original_price", "current_price", "discount_rate", "brand_name", "brand_description", "brand_link_inshop", "thumbnail", "category"]]      
-        product_InfoDF = pd.concat([product_InfoDF,tempDF])
-    product_InfoDF.reset_index(inplace=True, drop=True)
-    
-    temp_data = data[["id", "searchQ", "title"]]
-    temp_data.columns = ["videoID", "searchQ", "title"]
-    product_InfoDF = pd.merge(product_InfoDF, temp_data, on="videoID", how="left")
-    product_InfoDF.columns = ["video_id", "product_url", "product_name", "original_price",
-                            "current_price", "discount_rate", "brand_name", "brand_description",
-                            "brand_link_inshop", "thumbnail", "category", "search_key", "video_title"]
-    product_InfoDF = product_InfoDF[["product_url", "product_name", 
-                                    "original_price", "current_price", "discount_rate", 
-                                    "brand_name", "brand_description", "brand_link_inshop", 
-                                    "thumbnail", "category", 
-                                    "search_key", "video_id", "video_title"]]
-    product_InfoDF["original_price"] = product_InfoDF["original_price"].apply(remove_non_numeric)
-    product_InfoDF["current_price"] = product_InfoDF["current_price"].apply(remove_non_numeric)
-
-    product_info_lst = []
-    for idx in range(len(product_InfoDF)):
-        product_name = product_InfoDF.product_name[idx]
-        brand_name = product_InfoDF.brand_name[idx]
-        product_info_lst.append(search_category(product_name, brand_name))
-        sleep(5)
-    product_info_lst   
-
-    path = DATA_PATH + "product_rawdata"+ strftime("%Y-%m-%d_%H:%M", gmtime()) + ".csv"
-    product_InfoDF.to_csv(path)
-
+        # tagging + DB 업데이트
+        tag_lst = TagCreator().create_tags(product_info['detail_urls'])#, reviews)
+        update_tag_query = """
+            UPDATE product 
+            SET tag_lst = :tag_lst
+            WHERE idx = :idx
+        """
+        session.execute(text(update_tag_query), {
+            "tag_lst": tag_lst,
+            "idx": product_idx
+        })
+        session.commit()
+        print(f"태그 리스트 업데이트 완료. (idx: {product_idx})")
     
 
-def update_product_data_info():
-    return
+    except Exception as e:
+        print(f"오류 발생: {str(e)}")
+        session.rollback()
+
+    session.close()
+    
+
+
+def get_content(maxCount:int, order:str):
+    # DB설정
+    connection_url = f"mysql+mysqldb://{LOCAL_USER_NAME}:{LOCAL_PASSWORD}@localhost:{PORT}/{TEST_DATABASE}"
+    engine = create_engine(connection_url)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    
+    tot_prodcut_urls = []
+    youtube = YoutubeResource()
+    search_keyword = ["#선물추천", "선물언박싱", "생일선물언박싱", "#카카오톡선물하기"]
+    for keyword in search_keyword:
+        video_lst = youtube.get_resource_info(keyword, maxCount, order)
+        for vid, vinfo in video_lst.items():
+            try:
+                # 비디오 ID가 이미 존재하는지 확인
+                existing_source = session.execute(
+                    text("SELECT idx FROM source WHERE content_id = :content_id"),
+                    {"content_id": vid}
+                ).fetchone()
+
+                if existing_source:
+                    print(f"비디오 ID {vid}는 이미 존재합니다.")
+                    continue
+                
+                else:
+                    parsed_vinfo_dict = youtube.parse_resource_info(vinfo)
+                    product_urls = str(youtube.get_product_url(parsed_vinfo_dict))
+                    # 새로운 소스 추가
+                    source_insert_query = """
+                        INSERT INTO source (type, content_id, search_key, product_urls, content)
+                        VALUES (:type, :content_id, :search_key, :product_urls, :content)
+                    """
+                    result = session.execute(text(source_insert_query), {
+                        "type": "youtube",
+                        "content_id": vid,
+                        "search_key": keyword,
+                        "product_urls": product_urls,
+                        "content": json.dumps(vinfo)
+                    })
+                    session.commit()
+                    print(f"새로운 소스가 추가되었습니다. (video_id: {vid})")
+                    
+                    tot_prodcut_urls += eval(product_urls)
+                    # for url in eval(product_urls):
+                    #     get_product_data(url)
+                
+            except Exception as e:
+                print(f"소스 추가 중 오류 발생: {str(e)}")
+                session.rollback()
+                continue
+            
+        sleep(1)
+    session.close()
+    return tot_prodcut_urls
+
+def run_collector(maxcount=10, order= 'relevance'):
+    product_candidates = get_content(maxcount, order)
+    print(len(product_candidates))
+    for url in product_candidates:
+        get_product_data(url)
+
+
+
+if __name__ == '__main__':
+    # run_collector(30, order='relevance')
+    run_collector(50, order='date')
+
+

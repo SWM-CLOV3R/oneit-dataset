@@ -12,6 +12,8 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 import urllib.request
 
+from preprocess import remove_extra_spaces
+
 # 경로 설정
 current_dir = os.path.dirname(os.path.abspath(__file__))
 src_dir = os.path.abspath(os.path.join(current_dir, '..'))
@@ -43,7 +45,9 @@ def get_category_in_naver(product_name):
             cat_info = []
             for c in ["category1","category2","category3","category4"]:
                 temp = re.sub(r"\\/","/", informations["items"][0][c])
-                cat_info.append(temp)
+                temp = remove_extra_spaces(temp)
+                if len(temp):
+                    cat_info.append(temp)
             category = " > ".join(cat_info)
             return category
         except:
@@ -69,12 +73,20 @@ def search_category(product_name, brand_name):
                 break
     if not category:
         search_similar_product_url = "https://search.shopping.naver.com/search/all?query=" + product_name
-        driver = webdriver.Chrome() 
+        options = webdriver.ChromeOptions()
+        options.add_argument("--headless") # 창 띄우지 않기 옵션
+        options.add_argument("referer=https://shopping.naver.com/home")
+        options.add_argument("user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko)")
+        driver = webdriver.Chrome(options=options) 
         driver.get(search_similar_product_url) 
         html = driver.page_source
         soup = BeautifulSoup(html, 'html.parser')
-        title = soup.select_one("div.basicList_list_basis__uNBZx.basicList_has_border__5aEnS").select_one("div.product_item__MDtDF").select_one("div.product_inner__gr8QR").select_one("div.product_title__Mmw2K").get_text()
-        get_category_in_naver(title, brand_name)
+        try:
+            title = soup.select_one("div.product_title__Mmw2K").get_text()
+            get_category_in_naver(title, brand_name)
+        except:
+            print("Error : No Results -> " + product_name)
+            return None
 
 
     # 예외 처리를 위한 임시 방편. 추후 수정
@@ -117,13 +129,7 @@ def get_product_info(product_name, info_type):
 
     return None
 
-if __name__ == "__main__":
-    url = "https://search.shopping.naver.com/search/all?query="+"슬밋 퍼퓸 핸드크림"
-    driver = webdriver.Chrome() 
-    driver.get(url) 
 
-    html = driver.page_source
-    soup = BeautifulSoup(html, 'html.parser')
-    lst = soup.select_one("div.basicList_list_basis__uNBZx.basicList_has_border__5aEnS")
-    item = soup.select_one("div.product_item__MDtDF").select_one("div.product_inner__gr8QR").select_one("div.product_title__Mmw2K").get_text()
-    print(item)
+if __name__ == "__main__":
+    cat = search_category('[하트 선물포장] 퍼퓸 핸드크림 (+NEW 퍼퓸 2ML 증정)', '탬버린즈')
+    print(cat)

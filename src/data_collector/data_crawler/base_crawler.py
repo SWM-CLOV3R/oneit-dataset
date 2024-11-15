@@ -34,9 +34,14 @@ class Crawler:
     def parse_content(self, content):
         raise NotImplementedError('해당 쇼핑몰에 대한 cralwer가 없습니다.')
     
+    def is_invalid(self, content):
+        raise NotImplementedError('해당 쇼핑몰에 대한 cralwer가 없습니다.')
+    
     def run(self):
         self.cookie_maker()
         content = self.fetch_content()
+        if self.is_invalid(content):
+            return None
         if content:
             return self.parse_content(content)
         return None

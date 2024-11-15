@@ -6,6 +6,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 from webdriver_manager.chrome import ChromeDriverManager
+from bs4 import BeautifulSoup
 
 import json
 import re
@@ -26,7 +27,6 @@ class CM29Crawler(Crawler):
                                   options=self.options,
                                   desired_capabilities=capabilities)
         driver.get(self.url)
-        # time.sleep(10)
 
         try:
             WebDriverWait(driver, 10).until(
@@ -72,7 +72,6 @@ class CM29Crawler(Crawler):
         driver.quit()
 
         # DB에 저장
-
         return content
     
     def parse_content(self, content):
@@ -82,9 +81,12 @@ class CM29Crawler(Crawler):
         name = item_info['itemName']
         
         # 가격 정보
-        price_info = json.loads([value for key, value in content.items() if 'display-price' in key][0]['body'])['data']['price']
-        original_price = price_info['totalDiscountedItemPrice']
-        current_price = price_info['totalItemConsumerPrice']
+        try:
+            price_info = json.loads([value for key, value in content.items() if 'display-price' in key or 'promotion' in key][0]['body'])['data']['price']
+        except:
+            price_info = json.loads([value for key, value in content.items() if 'display-price' in key or 'promotion' in key][0]['body'])['data']['priceSummary']
+        original_price = price_info['totalItemConsumerPrice']
+        current_price = price_info['totalDiscountedItemPrice']
 
         # 브랜드
         brand = (item_info['frontBrand']['brandNameKor'] if item_info['frontBrand']['brandNameKor'] else None, item_info['frontBrand']['brandNameEng'] if item_info['frontBrand']['brandNameEng'] else None)
@@ -127,13 +129,15 @@ class CM29Crawler(Crawler):
         for i in content['img_urls']:
             if 'width=700' in i:
                 thumbnail_urls.append(i)
-            elif 'width=300' in i or 'next-contents' in i or 'next-product' in i: continue
+            elif 'width=1000' in i:
+                detail_urls.append(i)
+            elif 'width=300' in i or 'width=100' in i :continue # or 'next-contents' in i or 'next-product' in i: continue
             else:
                 detail_urls.append(i)
                 
         # 리뷰수, 리뷰
         review_info = json.loads([value for key, value in content.items() if 'reviews' in key and 'photo' not in key][0]['body'])['data']# 값은 하나만 나옴
-        review = review_info['results']
+        review = [review['contents'] for review in review_info['results']]
         review_count = review_info['count']
     
         # 평균 평점
@@ -145,7 +149,10 @@ class CM29Crawler(Crawler):
                 wish_count = w['heartCount']
                 
         # 관련있는 제품 리스트
-        recommend = json.loads([value for key, value in content.items() if 'recommends' in key][0]['body'])['data']['related_purchase_items']
+        try:
+            recommend = json.loads([value for key, value in content.items() if 'recommends' in key][0]['body'])#['data']['related_purchase_items']
+        except:
+            recommend = None
 
         # 베송 정보, 공지
         notice = json.loads([value for key, value in content.items() if 'notice' in key][0]['body'])['data']['noticeList']
@@ -161,10 +168,19 @@ class CM29Crawler(Crawler):
                           recommend=recommend, notice=notice)
         return info_table
     
+    def is_invalid(self, content):
+        soup = BeautifulSoup(content['page_source'], 'html.parser')
+        button = soup.find("button", {"id": "cta_purchase"})
+        if button:
+            button_val = button.get_text()
+            if '품절' in button_val or '판매 중지' in button_val:
+                return True
+        return False
     
 if __name__ == '__main__':
-    url = 'https://product.29cm.co.kr/catalog/2835491'
-    url = 'https://product.29cm.co.kr/catalog/2340880'
-    url = 'https://product.29cm.co.kr/catalog/2606849'
+    # url = 'https://product.29cm.co.kr/catalog/2252385'#일시품절
+    # url = 'https://product.29cm.co.kr/catalog/1814100'
+    url = 'https://product.29cm.co.kr/catalog/2566507'
     crawler = CM29Crawler(url)
     info = crawler.run()
+    # print(info)

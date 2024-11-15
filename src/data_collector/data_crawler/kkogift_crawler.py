@@ -6,6 +6,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
 from webdriver_manager.chrome import ChromeDriverManager
+from bs4 import BeautifulSoup
 
 import json
 import re
@@ -46,7 +47,7 @@ class KkoGiftCrawler(Crawler):
                 try:
                     request_id = log_json['params']['requestId']
                     request_url = log_json['params']['response']['url']
-                    if self.url.split("/")[-1] in request_url and '_=' in request_url:
+                    if self.url.split("/")[-1] in request_url:# or '=' in request_url:
                         response_body = driver.execute_cdp_cmd('Network.getResponseBody', {'requestId': request_id})
                         content[request_url] = response_body
                 except:
@@ -57,7 +58,7 @@ class KkoGiftCrawler(Crawler):
 
     def parse_content(self, content):
         item_info = json.loads([value for key, value in content.items() if "product-detail/v2/products/"+self.url.split('/')[-1] in key][0]['body'])
- 
+
         # 제품명
         name = item_info['itemDetails']['item']['displayName']
 
@@ -67,11 +68,12 @@ class KkoGiftCrawler(Crawler):
         
         # 브랜드
         brand = (item_info['itemDetails']['brand']['name'], None)
-        brand_other = json.loads([value for key, value in content.items() if "brandProducts" in key][0]['body'])
-
+        try:
+            brand_other = json.loads([value for key, value in content.items() if "brandProducts" in key][0]['body'])
+        except:brand_other = None
         # 제품군 카테고리 (쇼핑몰 규정)
         category_inmall = item_info['itemDetails']['item']['supplyChannelCategoryName']
-        
+    
         # 옵션 정보
         option_info = json.loads([value for key, value in content.items() if "options" in key][0]['body'])
         if option_info['type'] == 'NONE': 
@@ -96,7 +98,20 @@ class KkoGiftCrawler(Crawler):
                     tmp.add(option_combi[j]['value'])
                 option[option_info['names'][i]] = list(tmp)
                 option_combi = option_combi[0]['options']
-            custom = [option_info['customs']['name']]
+            try: custom = [option_info['customs']['name']]
+            except: custom = [option_info['customs'][0]['name']]
+        
+        elif option_info['type'] == 'SIMPLE':
+            option = dict()
+            tmp = set()
+            option_combi = option_info['simpleOptions']
+            for opt in option_combi:
+                tmp.add(opt['name'])
+            option[option_info['names'][0]] = list(tmp)
+            custom = None
+        else: 
+            option = None
+            custom = None
 
         # 성별
         gender = None
@@ -110,17 +125,20 @@ class KkoGiftCrawler(Crawler):
         # 리뷰수, 리뷰
         review_info = json.loads([value for key, value in content.items() if "review" in key and 'sortProperty' in key][0]['body'])
         review_count = review_info['reviewList']['totalCount']
-        review = review_info['reviewList']['contents']
+        review = [review['content'] for review in review_info['reviewList']['contents']]
 
         # 평균 평점, 위시리스트 담은 수
         avg_rating = json.loads([value for key, value in content.items() if "review" in key and 'stat' in key][0]['body'])['averageProductRating']
         wish_count = json.loads([value for key, value in content.items() if "wish" in key][0]['body'])['wishCount']
         
         # 관련있는 제품 리스트
-        recommend = json.loads([value for key, value in content.items() if "recommends" in key][0]['body'])
+        try:
+            recommend = json.loads([value for key, value in content.items() if "recommends" in key][0]['body'])
+        except:
+            recommend = None
 
         # 배송 정보, 공지
-        notice = json.loads([value for key, value in content.items() if "notice" in key][0]['body'])['giftNotices']
+        # notice = json.loads([value for key, value in content.items() if "notice" in key][0]['body'])['giftNotices']
 
         info_table = dict(name=name,
                           original_price=original_price, current_price=current_price,
@@ -130,17 +148,27 @@ class KkoGiftCrawler(Crawler):
                           thumbnail_urls=thumbnail_urls, detail_urls=detail_urls,
                           review=review, review_count=review_count,
                           rate_avg=avg_rating, wish_count=wish_count,
-                          recommend=recommend, notice=notice)
+                          recommend=recommend)#, notice=notice)
         return info_table
+    
+    def is_invalid(self, content):
+        soup = BeautifulSoup(content['page_source'], 'html.parser')
+        button = soup.find("em", class_="circle_badge")
+        if button:
+            button_val = button.get_text()
+            if '종료' in button_val or '중단' in button_val or '품절' in button_val:
+                return True
+        return False
     
 if __name__ == '__main__':
     url = 'https://gift.kakao.com/product/2383657' # two option 
     url = 'https://gift.kakao.com/product/8535337' #one option
-    one_options = 'https://gift.kakao.com/product/7290915'
-    custom = 'https://gift.kakao.com/product/9946004'
-    url = 'https://gift.kakao.com/product/2383657'
-    url = 'https://gift.kakao.com/product/1068105'
+ 
     crawler = KkoGiftCrawler(url)
     content = crawler.run()
-    print(content['custom'])
-    print(content['detail_urls'])
+    print(content)
+    # print(content)
+    # print(content['brand'])
+    # print(content['brand'][0])
+    # print(content)
+    # print(content['detail_urls'])

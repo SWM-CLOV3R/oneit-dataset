@@ -131,15 +131,18 @@ class MusinsaCralwer(Crawler):
         # 이미지 (thumbnail, details)
         thumbnail_urls = []
         for item in product_info['goodsImages']:
-            thumbnail_urls.append(item['imageUrl'])
+            if 'http' not in item['imageUrl']:
+                thumbnail_urls.append('https://image.msscdn.net/thumbnails' + item['imageUrl'])
+            else:
+                thumbnail_urls.append(item['imageUrl'])
         detail_urls = re.findall(r'src="([^"]+)"', product_info['goodsContents'])
         for i in range(len(detail_urls)):
             if not detail_urls[i].startswith('http'):
                 detail_urls[i] = 'https:' + detail_urls[i]
 
-        # # 리뷰수, 리뷰
+        # 리뷰수, 리뷰
         review_info = json.loads([value for key, value in content.items() if 'review' in key and 'list' in key and 'similar' not in key][0]['body'])
-        review = review_info['data']['list']
+        review = [review['content'] for review in review_info['data']['list']]
         review_count = product_info['goodsReview']['totalCount']
 
         # 평균 평점, 위시리스트 담은 수
@@ -170,9 +173,15 @@ class MusinsaCralwer(Crawler):
                           recommend=recommend,notice=notice)
         return info_table 
     
+    def is_invalid(self, content):
+        source = content['page_source']
+        invalid_key = ['품절', '재입고', '판매 중단', '판매 중지']
+        if any(keyword in source for keyword in invalid_key):
+            return True
+        return False
 
 if __name__ == '__main__':
-    url = 'https://www.musinsa.com/products/4148425'
-    url = 'https://www.musinsa.com/products/4379830'
+    url = 'https://www.musinsa.com/products/3879' # 품절
+    url = 'https://www.musinsa.com/app/goods/3403843' #유효X 상품 체크
     crawler = MusinsaCralwer(url)
     info = crawler.run()
